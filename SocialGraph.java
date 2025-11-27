@@ -2,188 +2,308 @@ import java.util.*;
 import java.io.*;
 
 public class SocialGraph {
+    private static final int MIN_ACCOUNTS = 1;
+    private static final int MAX_ACCOUNTS = 1000;
+    
+    private ArrayList<ArrayList<Integer>> adjacencyList;
+    private int numAccounts;
 
-    private ArrayList<ArrayList<Integer>> adjList;
-    private int numAccounts; // Variable 'n' from the spec
-
-    // CONSTRUCTOR
     public SocialGraph() {
-        this.adjList = new ArrayList<>();
+        this.adjacencyList = new ArrayList<>();
         this.numAccounts = 0;
     }
 
-    // Part 1 - loading graph
-    public void loadData(String filename) {
-        try {
-            File file = new File(filename);
-            Scanner fileScanner = new Scanner(file);
-
-            if (fileScanner.hasNextInt()) {
-                numAccounts = fileScanner.nextInt();
-                int numFriendships = fileScanner.nextInt();
-
-                // initialize the adjacency list for 'n' users
-                // this prevents IndexOutOfBounds errors later
-                adjList.clear(); // clear old data if reloading
-                for (int i = 0; i < numAccounts; i++) {
-                    adjList.add(new ArrayList<>());
-                }
-
-                // read the connections [cite: 43]
-                for (int i = 0; i < numFriendships; i++) {
-                    int u = fileScanner.nextInt();
-                    int v = fileScanner.nextInt();
-
-                    // add edge u -> v
-                    adjList.get(u).add(v);
-
-                    // add edge v -> u (bi-directional)
-                    adjList.get(v).add(u);
-                }
-
-                System.out.println("Graph loaded successfully!");
+    /**
+     * Loads social network data from file and builds the graph
+     * @param filename The path to the data file
+     * @return true if loading was successful, false otherwise
+     */
+    public boolean loadData(String filename) {
+        try (Scanner fileScanner = new Scanner(new File(filename))) {
+            if (!fileScanner.hasNextInt()) {
+                System.out.println("Error: Invalid file format.");
+                return false;
             }
-            fileScanner.close();
+
+            numAccounts = fileScanner.nextInt();
+            if (numAccounts < MIN_ACCOUNTS || numAccounts > MAX_ACCOUNTS) {
+                System.out.println("Error: Number of accounts must be between " + 
+                                 MIN_ACCOUNTS + " and " + MAX_ACCOUNTS);
+                return false;
+            }
+
+            int numFriendships = fileScanner.nextInt();
+            if (numFriendships < 0) {
+                System.out.println("Error: Number of friendships cannot be negative.");
+                return false;
+            }
+
+            // Initialize adjacency list
+            adjacencyList.clear();
+            for (int i = 0; i < numAccounts; i++) {
+                adjacencyList.add(new ArrayList<>());
+            }
+
+            // Read and validate friendships
+            for (int i = 0; i < numFriendships; i++) {
+                if (!fileScanner.hasNextInt()) {
+                    System.out.println("Error: Insufficient friendship data.");
+                    return false;
+                }
+                
+                int u = fileScanner.nextInt();
+                int v = fileScanner.nextInt();
+                
+                if (!isValidAccountId(u) || !isValidAccountId(v)) {
+                    System.out.println("Error: Invalid account ID in friendship data: " + u + " " + v);
+                    return false;
+                }
+                
+                if (u == v) {
+                    System.out.println("Warning: Self-friendship ignored for account " + u);
+                    continue;
+                }
+
+                // Add bidirectional friendship
+                addFriendship(u, v);
+            }
+
+            System.out.println("Graph loaded successfully! " + 
+                             numAccounts + " accounts, " + numFriendships + " friendships.");
+            return true;
+
         } catch (FileNotFoundException e) {
-            System.out.println("Error: File not found. Please check the filename.");
+            System.out.println("Error: File '" + filename + "' not found.");
+            return false;
+        } catch (Exception e) {
+            System.out.println("Error: Unexpected problem reading file: " + e.getMessage());
+            return false;
         }
     }
 
-    // Part 2: display friends list
-    public void displayFriends(int id) {
-        if (id < 0 || id >= numAccounts) {
-            System.out.println("Error: Person ID " + id + " does not exist.");
+    /**
+     * Adds a bidirectional friendship between two accounts
+     */
+    private void addFriendship(int account1, int account2) {
+        if (!adjacencyList.get(account1).contains(account2)) {
+            adjacencyList.get(account1).add(account2);
+        }
+        if (!adjacencyList.get(account2).contains(account1)) {
+            adjacencyList.get(account2).add(account1);
+        }
+    }
+
+    /**
+     * Displays all friends of a given account
+     */
+    public void displayFriends(int accountId) {
+        if (!isValidAccountId(accountId)) {
+            System.out.println("Error: Account ID " + accountId + " is invalid. Must be between 0 and " + (numAccounts - 1));
             return;
         }
 
-        ArrayList<Integer> friends = adjList.get(id);
-
-        // Display count
-        System.out.println("Person " + id + " has " + friends.size() + " friends!");
-
-        // Display list
-        System.out.print("List of friends: ");
-        for (int friend : friends) {
-            System.out.print(friend + " ");
+        List<Integer> friends = adjacencyList.get(accountId);
+        System.out.println("Account " + accountId + " has " + friends.size() + " friends:");
+        
+        if (friends.isEmpty()) {
+            System.out.println("  No friends found.");
+        } else {
+            System.out.print("  Friends: ");
+            for (int i = 0; i < friends.size(); i++) {
+                System.out.print(friends.get(i));
+                if (i < friends.size() - 1) System.out.print(", ");
+            }
+            System.out.println();
         }
-        System.out.println(); // New line for formatting
     }
 
-    // ---------------------------------------------------
-    // Part 3: display connection for pathfinding
-    // ---------------------------------------------------
+    /**
+     * Checks and displays connection path between two accounts using BFS
+     */
     public void checkConnection(int startId, int endId) {
-        // validation
-        if (startId < 0 || startId >= numAccounts || endId < 0 || endId >= numAccounts) {
-            System.out.println("Error: One or both IDs do not exist.");
+        if (!isValidAccountId(startId) || !isValidAccountId(endId)) {
+            System.out.println("Error: One or both account IDs are invalid.");
             return;
         }
 
         if (startId == endId) {
-            System.out.println("They are the same person!");
+            System.out.println("These are the same account (" + startId + ").");
             return;
         }
 
-        // setup BFS Structures
+        List<Integer> path = findShortestPath(startId, endId);
+        
+        if (path.isEmpty()) {
+            System.out.println("No connection found between account " + startId + " and account " + endId + ".");
+        } else {
+            System.out.println("Connection found between account " + startId + " and account " + endId + ":");
+            displayPath(path);
+        }
+    }
+
+    /**
+     * Finds shortest path between two accounts using BFS
+     */
+    private List<Integer> findShortestPath(int startId, int endId) {
         boolean[] visited = new boolean[numAccounts];
-        int[] parent = new int[numAccounts]; // to retrace the path
-        Arrays.fill(parent, -1); // initialize parents to -1
+        int[] parent = new int[numAccounts];
+        Arrays.fill(parent, -1);
 
         Queue<Integer> queue = new LinkedList<>();
-
-        // start BFS
         visited[startId] = true;
-        queue.add(startId);
-        boolean found = false;
+        queue.offer(startId);
 
         while (!queue.isEmpty()) {
             int current = queue.poll();
 
-            // stop if we found the target
             if (current == endId) {
-                found = true;
-                break;
+                return reconstructPath(parent, startId, endId);
             }
 
-            // check neighbors
-            for (int neighbor : adjList.get(current)) {
+            for (int neighbor : adjacencyList.get(current)) {
                 if (!visited[neighbor]) {
                     visited[neighbor] = true;
-                    parent[neighbor] = current; // mark who discovered this neighbor
-                    queue.add(neighbor);
+                    parent[neighbor] = current;
+                    queue.offer(neighbor);
                 }
             }
         }
 
-        // path reconstruction for backtracking
-        if (found) {
-            System.out.println("There is a connection from " + startId + " to " + endId + "!");
-
-            ArrayList<Integer> path = new ArrayList<>();
-            int crawl = endId;
-            path.add(crawl);
-
-            while (parent[crawl] != -1) {
-                path.add(parent[crawl]);
-                crawl = parent[crawl];
-            }
-
-            // The path is currently: End -> ... -> Start
-            // We want to print: Start -> ... -> End
-            Collections.reverse(path);
-
-            // Print format per spec: "A is friends with B"
-            for (int i = 0; i < path.size() - 1; i++) {
-                System.out.println(path.get(i) + " is friends with " + path.get(i + 1));
-            }
-        } else {
-            System.out.println("Cannot find a connection between " + startId + " and " + endId);
-        }
+        return Collections.emptyList();
     }
 
-    // main
+    /**
+     * Reconstructs path from parent array
+     */
+    private List<Integer> reconstructPath(int[] parent, int startId, int endId) {
+        List<Integer> path = new ArrayList<>();
+        int current = endId;
 
+        while (current != -1) {
+            path.add(current);
+            current = parent[current];
+        }
+
+        Collections.reverse(path);
+        return path;
+    }
+
+    /**
+     * Displays the connection path in a user-friendly format
+     */
+    private void displayPath(List<Integer> path) {
+        for (int i = 0; i < path.size() - 1; i++) {
+            System.out.println("  " + path.get(i) + " is friends with " + path.get(i + 1));
+        }
+        System.out.println("Path length: " + (path.size() - 1) + " connections");
+    }
+
+    /**
+     * Validates if an account ID is within valid range
+     */
+    private boolean isValidAccountId(int accountId) {
+        return accountId >= 0 && accountId < numAccounts;
+    }
+
+    /**
+     * Main method with improved user interface
+     */
     public static void main(String[] args) {
-        Scanner input = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in);
         SocialGraph graph = new SocialGraph();
+        
+        System.out.println("=== Social Network Analysis ===");
+        
+        // File loading with retry logic
+        boolean dataLoaded = false;
+        while (!dataLoaded) {
+            System.out.print("Enter data file path: ");
+            String filename = scanner.nextLine().trim();
+            
+            if (filename.equalsIgnoreCase("exit")) {
+                System.out.println("Goodbye!");
+                return;
+            }
+            
+            dataLoaded = graph.loadData(filename);
+            if (!dataLoaded) {
+                System.out.println("Please try again or type 'exit' to quit.");
+            }
+        }
+
+        // Main menu loop
         boolean running = true;
-
-        System.out.print("Input file path: "); // [cite: 122]
-        String filename = input.next();
-        graph.loadData(filename);
-
         while (running) {
-            System.out.println("\nMAIN MENU"); // [cite: 124]
-            System.out.println("[1] Get friend list");
-            System.out.println("[2] Get connection");
-            System.out.println("[3] Exit");
-            System.out.print("Enter your choice: ");
-
-            int choice = 0;
-            if (input.hasNextInt())
-                choice = input.nextInt();
+            displayMainMenu();
+            
+            if (!scanner.hasNextInt()) {
+                System.out.println("Error: Please enter a valid number.");
+                scanner.next(); // Clear invalid input
+                continue;
+            }
+            
+            int choice = scanner.nextInt();
+            scanner.nextLine(); // Consume newline
 
             switch (choice) {
                 case 1:
-                    System.out.print("Enter ID of person: ");
-                    int id = input.nextInt();
-                    graph.displayFriends(id);
+                    handleFriendListQuery(graph, scanner);
                     break;
                 case 2:
-                    System.out.print("Enter ID of first person: ");
-                    int start = input.nextInt();
-                    System.out.print("Enter ID of second person: ");
-                    int end = input.nextInt();
-                    graph.checkConnection(start, end);
+                    handleConnectionQuery(graph, scanner);
                     break;
                 case 3:
                     running = false;
-                    System.out.println("Exiting program.");
+                    System.out.println("Thank you for using Social Network Analysis. Goodbye!");
                     break;
                 default:
-                    System.out.println("Invalid choice.");
+                    System.out.println("Invalid choice. Please select 1, 2, or 3.");
             }
         }
-        input.close();
+        
+        scanner.close();
+    }
+
+    private static void displayMainMenu() {
+        System.out.println("\n--- Main Menu ---");
+        System.out.println("1. Get friend list");
+        System.out.println("2. Check connection between two accounts");
+        System.out.println("3. Exit");
+        System.out.print("Enter your choice (1-3): ");
+    }
+
+    private static void handleFriendListQuery(SocialGraph graph, Scanner scanner) {
+        System.out.print("Enter account ID: ");
+        
+        if (!scanner.hasNextInt()) {
+            System.out.println("Error: Please enter a valid number.");
+            scanner.next(); // Clear invalid input
+            return;
+        }
+        
+        int accountId = scanner.nextInt();
+        scanner.nextLine(); // Consume newline
+        graph.displayFriends(accountId);
+    }
+
+    private static void handleConnectionQuery(SocialGraph graph, Scanner scanner) {
+        System.out.print("Enter first account ID: ");
+        if (!scanner.hasNextInt()) {
+            System.out.println("Error: Please enter a valid number.");
+            scanner.next();
+            return;
+        }
+        int startId = scanner.nextInt();
+        
+        System.out.print("Enter second account ID: ");
+        if (!scanner.hasNextInt()) {
+            System.out.println("Error: Please enter a valid number.");
+            scanner.next();
+            return;
+        }
+        int endId = scanner.nextInt();
+        scanner.nextLine(); // Consume newline
+        
+        graph.checkConnection(startId, endId);
     }
 }
